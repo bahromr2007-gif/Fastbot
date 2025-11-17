@@ -15,13 +15,11 @@ from telegram.ext import (
 )
 
 # ================= SOZLAMALAR =================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_BOT_TOKEN")
-ADMIN_ID = 123456789  # O'zingizning ID ingiz
+TELEGRAM_TOKEN = "8172860090:AAESHIwiNU2n9vgtBVxKthIoQcvRzlHZSNw"
+ADMIN_ID = 7800649803
 
 # Cache va ma'lumotlar
-user_data = {}
 yt_cache = {}
-search_cache = {}
 
 # Logging sozlash
 logging.basicConfig(
@@ -43,7 +41,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔍 **Qo'shiq nomi yozish** - YouTube dan qidirish
 📱 **Instagram video link** - Videodan musiqa aniqlash  
 🎥 **YouTube link** - To'g'ridan-to'g'ri MP3 yuklash
-🎤 **Ovozli xabar** - Shazam bilan musiqa aniqlash
 
 ⚡ **Tez va sifatli musiqa yuklab beraman!**
 
@@ -52,8 +49,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("📚 Qo'llanma", callback_data="help")],
-        [InlineKeyboardButton("🎵 Mashhur qo'shiqlar", callback_data="popular")],
-        [InlineKeyboardButton("📊 Statistika", callback_data="stats")]
+        [InlineKeyboardButton("🎵 Mashhur qo'shiqlar", callback_data="popular")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -73,22 +69,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 3. **YouTube link** - YouTube video linkini yuboring
    *To'g'ridan-to'g'ri MP3 formatida yuklab oling*
 
-4. **Ovozli xabar** - Musiqani ovozli xabar orqali yuboring
-   *Shazam yordamida musiqa nomini aniqlayman*
-
 📞 **Qo'llab-quvvatlash: @Rustamov_v1**
     """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ================= YOUTUBE QIDIRUV =================
-async def search_youtube(update: Update, query: str, page=0):
+async def search_youtube(update: Update, query: str):
     """YouTube dan musiqa qidirish"""
-    search_url = f"ytsearch10:{query}"
+    search_url = f"ytsearch5:{query}"
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False
     }
 
     try:
@@ -98,46 +90,31 @@ async def search_youtube(update: Update, query: str, page=0):
             
             if not entries:
                 await update.message.reply_text("❌ Hech narsa topilmadi. Boshqa so'z yozib ko'ring.")
-                return None
+                return
 
             # Keyboard yaratish
             keyboard = []
             for idx, entry in enumerate(entries, 1):
                 title = entry.get('title', 'Nomaʼlum')[:45]
-                duration = entry.get('duration', 0)
-                duration_str = f" ({duration//60}:{duration%60:02d})" if duration else ""
-                
                 yt_cache[str(idx)] = entry['webpage_url']
                 button = InlineKeyboardButton(
-                    f"{idx}. {title}{duration_str}", 
+                    f"{idx}. {title}", 
                     callback_data=f"download_{idx}"
                 )
                 keyboard.append([button])
-
-            # Pagination tugmalari
-            nav_buttons = []
-            if page > 0:
-                nav_buttons.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"prev_{page}"))
-            nav_buttons.append(InlineKeyboardButton("➡️ Keyingi", callback_data=f"next_{page}"))
-            keyboard.append(nav_buttons)
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             message_text = f"🔍 **Qidiruv natijalari:** '{query}'\n\n📋 Quyidagi treklardan birini tanlang:"
             await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
-            
-            return entries
 
     except Exception as e:
         logger.error(f"YouTube search error: {e}")
         await update.message.reply_text("❌ Qidiruvda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
-        return None
 
 # ================= YOUTUBE YUKLASH =================
-async def download_youtube_audio(update: Update, video_url: str, video_title=""):
+async def download_youtube_audio(update: Update, video_url: str):
     """YouTube videoni MP3 ga yuklash"""
-    temp_files = []
-    
     try:
         # Yuklanayotganini bildirish
         if hasattr(update, 'callback_query'):
@@ -148,22 +125,19 @@ async def download_youtube_audio(update: Update, video_url: str, video_title="")
         # YouTube DL sozlamalari
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'outtmpl': 'temp_audio.%(ext)s',
             'quiet': True,
-            'no_warnings': True,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
         }
 
         # Yuklab olish
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             filename = ydl.prepare_filename(info)
-            mp3_filename = filename.rsplit('.', 1)[0] + '.mp3'
-            temp_files.extend([filename, mp3_filename])
+
+        # MP3 ga konvert qilish
+        audio = AudioSegment.from_file(filename)
+        mp3_filename = "song.mp3"
+        audio.export(mp3_filename, format="mp3")
 
         # Telegramga yuborish
         caption = f"🎵 **{info.get('title', 'Audio')}**\n\n✅ @SongFinderBot"
@@ -181,8 +155,6 @@ async def download_youtube_audio(update: Update, video_url: str, video_title="")
         success_text = f"✅ **{info.get('title', 'Audio')}**\n\n🎧 Muvaffaqiyatli yuklab olindi!"
         if hasattr(update, 'callback_query'):
             await update.callback_query.edit_message_text(success_text, parse_mode='Markdown')
-        else:
-            await update.message.reply_text(success_text, parse_mode='Markdown')
 
     except Exception as e:
         logger.error(f"Download error: {e}")
@@ -194,12 +166,12 @@ async def download_youtube_audio(update: Update, video_url: str, video_title="")
 
     finally:
         # Vaqtincha fayllarni tozalash
-        for file_path in temp_files:
+        for file_path in [filename, mp3_filename]:
             try:
                 if os.path.exists(file_path):
                     os.remove(file_path)
-            except Exception as e:
-                logger.error(f"File cleanup error: {e}")
+            except:
+                pass
 
 # ================= INSTAGRAM VIDEO =================
 async def handle_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
@@ -210,7 +182,7 @@ async def handle_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         # Video yuklash
         ydl_opts = {
             'format': 'best',
-            'outtmpl': 'temp/insta_video.%(ext)s',
+            'outtmpl': 'temp_insta.%(ext)s',
             'quiet': True
         }
 
@@ -218,14 +190,8 @@ async def handle_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             info = ydl.extract_info(url, download=True)
             video_path = ydl.prepare_filename(info)
 
-        # Videoni yuborish
-        await update.message.reply_video(
-            video=open(video_path, 'rb'),
-            caption="🎥 Video yuklandi. Musiqani aniqlayman..."
-        )
-
         # Audio konvert qilish
-        audio_path = "temp/insta_audio.mp3"
+        audio_path = "temp_audio.mp3"
         audio = AudioSegment.from_file(video_path)
         audio.export(audio_path, format="mp3")
 
@@ -266,58 +232,6 @@ async def handle_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             except:
                 pass
 
-# ================= OVOZLI XABAR =================
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ovozli xabarni qayta ishlash"""
-    try:
-        await update.message.reply_text("🎤 Ovozli xabar tahlil qilinmoqda...")
-
-        voice_file = await update.message.voice.get_file()
-        voice_path = f"temp/voice_{update.message.message_id}.ogg"
-        
-        # Ovozli xabarni yuklash
-        await voice_file.download_to_drive(voice_path)
-
-        # MP3 ga konvert qilish
-        mp3_path = voice_path.replace('.ogg', '.mp3')
-        audio = AudioSegment.from_file(voice_path)
-        audio.export(mp3_path, format="mp3")
-
-        # Shazam bilan aniqlash
-        shazam = Shazam()
-        result = await shazam.recognize_song(mp3_path)
-
-        if result and 'track' in result:
-            track = result['track']
-            title = track.get('title', 'Nomaʼlum')
-            artist = track.get('subtitle', 'Nomaʼlum')
-            music_name = f"{title} - {artist}"
-            
-            await update.message.reply_text(
-                f"🎶 **Aniqlangan musiqa:**\n\n"
-                f"📀 **Nomi:** {title}\n"
-                f"👤 **Ijrochi:** {artist}\n\n"
-                f"🔍 YouTube dan qidirilmoqda..."
-            )
-            
-            await search_youtube(update, music_name)
-            
-        else:
-            await update.message.reply_text("❌ Musiqani aniqlab bo'lmadi. Boshqa ovozli xabar yuboring.")
-
-    except Exception as e:
-        logger.error(f"Voice error: {e}")
-        await update.message.reply_text("❌ Ovozli xabarni qayta ishlashda xatolik.")
-
-    finally:
-        # Fayllarni tozalash
-        for file_path in [voice_path, mp3_path]:
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-            except:
-                pass
-
 # ================= CALLBACK HANDLER =================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inline tugmalarni boshqarish"""
@@ -350,18 +264,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "🎵 **Mashhur qo'shiqlar:**\n\n" + "\n".join([f"• {song}" for song in popular_songs])
         text += "\n\n🔍 Istalgan qo'shiq nomini yozing!"
         await query.edit_message_text(text, parse_mode='Markdown')
-    
-    elif data == "stats":
-        stats_text = f"""
-📊 **Bot Statistika:**
-
-👥 **Foydalanuvchilar:** 1,000+
-🎵 **Yuklangan treklar:** 5,000+
-⭐ **Baholar:** 4.8/5
-
-🚀 **Server holati:** Faol
-        """
-        await query.edit_message_text(stats_text, parse_mode='Markdown')
 
 # ================= ASOSIY HANDLER =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -398,7 +300,6 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(callback_handler))
     
     # Botni ishga tushirish

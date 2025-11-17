@@ -2,3 +2,5 @@ python-telegram-bot==20.7
 yt-dlp==2023.11.16
 pydub==0.25.1
 shazamio==0.5.1
+ffmpeg-python==0.2.0
+aiohttp==3.8.5
